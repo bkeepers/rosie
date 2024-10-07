@@ -197,6 +197,204 @@ describe('Factory', () => {
     });
   });
 
+  describe('buildAsync', () => {
+    describe('with a normal constructor', () => {
+      class Thing {
+        constructor(attrs) {
+          for (let attr in attrs) {
+            this[attr] = attrs[attr];
+          }
+        }
+      }
+
+      beforeEach(() => {
+        Factory.define('thing', Thing)
+          .attr('name', 'Thing 1')
+          .after(async (obj) => {
+            obj.afterCalled = true;
+          });
+      });
+
+      it('should return a new instance of that constructor', async function () {
+        expect((await Factory.buildAsync('thing')) instanceof Thing).toBe(true);
+        expect((await Factory.buildAsync('thing')).constructor).toBe(Thing);
+      });
+
+      it('should set attributes', async function () {
+        expect(await Factory.buildAsync('thing')).toEqual(
+          expect.objectContaining({ name: 'Thing 1', afterCalled: true })
+        );
+      });
+
+      describe('running callbacks', () => {
+        describe('callbacks do not return value', () => {
+          beforeEach(() => {
+            Factory.define('thing', Thing)
+              .option('isAwesome', true)
+              .after(async (obj, options) => {
+                obj.afterCalled = true;
+                obj.isAwesomeOption = options.isAwesome;
+              });
+          });
+
+          it('should run callbacks', async () => {
+            expect((await Factory.buildAsync('thing')).afterCalled).toBe(true);
+          });
+
+          it('should pass options to the after callback', async () => {
+            expect((await Factory.buildAsync('thing')).isAwesomeOption).toBe(
+              true
+            );
+          });
+        });
+
+        describe('callbacks return new object', () => {
+          beforeEach(() => {
+            Factory.define('thing', Thing)
+              .option('isAwesome', true)
+              .attr('name', 'Thing 1')
+              .after(async (obj) => ({
+                wrapped: obj,
+              }))
+              .after(async (obj, options) => ({
+                afterCalled: true,
+                isAwesomeOption: options.isAwesome,
+                wrapped: obj,
+              }));
+          });
+
+          it('should run callbacks', async () => {
+            expect((await Factory.buildAsync('thing')).afterCalled).toBe(true);
+          });
+
+          it('should pass options to the after callback', async () => {
+            expect((await Factory.buildAsync('thing')).isAwesomeOption).toBe(
+              true
+            );
+          });
+
+          it('should return object from callback as the final result', async () => {
+            expect(await Factory.buildAsync('thing')).toEqual({
+              afterCalled: true,
+              isAwesomeOption: true,
+              wrapped: {
+                wrapped: new Thing({
+                  name: 'Thing 1',
+                }),
+              },
+            });
+          });
+        });
+
+        describe('when passed options', () => {
+          it('passes all options', async () => {
+            Factory.define('thing')
+              .option('option1', 'option1')
+              .option('option2', 'option2')
+              .after(async (_, options) => options);
+
+            // Default
+            expect(await Factory.buildAsync('thing')).toEqual({
+              option1: 'option1',
+              option2: 'option2',
+            });
+
+            // Override
+            expect(
+              await Factory.buildAsync(
+                'thing',
+                {},
+                {
+                  option1: 'foo',
+                  option2: 'bar',
+                }
+              )
+            ).toEqual({
+              option1: 'foo',
+              option2: 'bar',
+            });
+
+            // Extra (!)
+            expect(
+              await Factory.buildAsync(
+                'thing',
+                {},
+                {
+                  option1: 'foo',
+                  option2: 'bar',
+                  option3: 'baz',
+                }
+              )
+            ).toEqual({
+              option1: 'foo',
+              option2: 'bar',
+              option3: 'baz',
+            });
+          });
+
+          it('calls default option functions', async () => {
+            const fn = jest.fn().mockReturnValue('default value');
+            Factory.define('thing')
+              .option('option', fn)
+              .attr('value', ['option'], (option) => option)
+              .after(async (obj, options) => ({ ...obj, ...options }));
+
+            expect(await Factory.buildAsync('thing')).toEqual({
+              option: 'default value',
+              value: 'default value',
+            });
+            expect(fn).toHaveBeenCalledTimes(1);
+          });
+        });
+      });
+
+      describe('using attrs convenience function', () => {
+        beforeEach(() => {
+          Factory.define('thing', Thing).attrs({
+            name: 'Thing 1',
+            attr1: 'value1',
+            attr2: 'value2',
+          });
+        });
+
+        it('should set attributes', async () => {
+          const thing = await Factory.buildAsync('thing');
+          expect(thing).toEqual(
+            expect.objectContaining({
+              name: 'Thing 1',
+              attr1: 'value1',
+              attr2: 'value2',
+            })
+          );
+        });
+      });
+    });
+
+    describe('without a constructor', () => {
+      beforeEach(() => {
+        Factory.define('thing').attr('name', 'Thing 1');
+      });
+
+      it('should return object with attributes set', async () => {
+        expect(await Factory.buildAsync('thing')).toEqual({ name: 'Thing 1' });
+      });
+
+      it('should allow overriding attributes', async () => {
+        expect(await Factory.buildAsync('thing', { name: 'changed' })).toEqual({
+          name: 'changed',
+        });
+      });
+
+      it('throws error if the factory is not defined', async () => {
+        try {
+          await Factory.buildAsync('nothing');
+        } catch (e) {
+          expect(e).toEqual(new Error('The "nothing" factory is not defined.'));
+        }
+      });
+    });
+  });
+
   describe('buildList', () => {
     beforeEach(() => {
       Factory.define('thing').attr('name', 'Thing 1');
@@ -260,7 +458,7 @@ describe('Factory', () => {
         });
       });
 
-      it('should reutrn array of objects with specified attributes', () => {
+      it('should return array of objects with specified attributes', () => {
         const list = Other.buildList(10, { name: 'changed' });
         list.forEach((item) => {
           expect(item).toEqual({ name: 'changed' });
