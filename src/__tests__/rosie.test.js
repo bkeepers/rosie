@@ -498,6 +498,113 @@ describe('Factory', () => {
     });
   });
 
+  describe('buildListAsync', () => {
+    beforeEach(() => {
+      Factory.define('thing').attr('name', 'Thing 1');
+    });
+
+    it('should return array of objects', async () => {
+      expect((await Factory.buildListAsync('thing', 10)).length).toEqual(10);
+    });
+
+    it('should return array of objects with default attributes', async () => {
+      const things = await Factory.buildListAsync('thing', 10);
+      for (let i = 0; i < 10; i++) {
+        expect(things[i]).toEqual({ name: 'Thing 1' });
+      }
+    });
+
+    it('should return array of objects with specified attributes', async () => {
+      const things = await Factory.buildListAsync('thing', 10, {
+        name: 'changed',
+      });
+      for (let i = 0; i < 10; i++) {
+        expect(things[i]).toEqual({ name: 'changed' });
+      }
+    });
+
+    it('should return an array of objects with a sequence', async () => {
+      Factory.define('thing').sequence('id');
+      const things = await Factory.buildListAsync('thing', 4);
+      for (let i = 0; i < 4; i++) {
+        expect(things[i]).toEqual({ id: i + 1 });
+      }
+    });
+
+    it('should return an array of objects with a sequence and with specified attributes', async () => {
+      Factory.define('thing').sequence('id').attr('name', 'Thing 1');
+      const things = await Factory.buildListAsync('thing', 4, {
+        name: 'changed',
+      });
+      for (let i = 0; i < 4; i++) {
+        expect(things[i]).toEqual({ id: i + 1, name: 'changed' });
+      }
+    });
+
+    it('should evaluate a option for every member of the list', async () => {
+      Factory.define('thing')
+        .option('random', () => {
+          return Math.random();
+        })
+        .attr('number', ['random'], (random) => random);
+      const things = await Factory.buildListAsync('thing', 2, {}, {});
+      expect(things[0].number).not.toEqual(things[1].number);
+    });
+
+    describe('with an unregistered factory', () => {
+      const Other = new Factory().attr('name', 'Other 1');
+
+      it('should return array of objects', async () => {
+        expect((await Other.buildListAsync(10)).length).toEqual(10);
+      });
+
+      it('should return array of objects with default attributes', async () => {
+        const list = await Other.buildListAsync(10);
+        list.forEach((item) => {
+          expect(item).toEqual({ name: 'Other 1' });
+        });
+      });
+
+      it('should return array of objects with specified attributes', async () => {
+        const list = await Other.buildListAsync(10, { name: 'changed' });
+        list.forEach((item) => {
+          expect(item).toEqual({ name: 'changed' });
+        });
+      });
+
+      it('should return an array of objects with a sequence', async () => {
+        const Another = new Factory().sequence('id');
+        const list = await Another.buildListAsync(4);
+        list.forEach((item, idx) => {
+          expect(item).toEqual({ id: idx + 1 });
+        });
+      });
+
+      it('should return an array of objects with a sequence and with specified attributes', async () => {
+        const Another = new Factory().sequence('id').attr('name', 'Another 1');
+        const list = await Another.buildListAsync(4, { name: 'changed' });
+        list.forEach((item, idx) => {
+          expect(item).toEqual({ id: idx + 1, name: 'changed' });
+        });
+      });
+
+      it('should evaluate an option for every member of the list', async () => {
+        const Another = new Factory()
+          .option('random', Math.random)
+          .attr('number', ['random'], (random) => random);
+        const list = await Another.buildListAsync(2, {}, {});
+        expect(list[0].number).not.toEqual(list[1].number);
+      });
+
+      it('should be reset by resetAll', async () => {
+        const Counter = new Factory().sequence('count');
+        expect(await Counter.buildAsync()).toEqual({ count: 1 });
+        Factory.resetAll();
+        expect(await Counter.buildAsync()).toEqual({ count: 1 });
+      });
+    });
+  });
+
   describe('extend', () => {
     class Thing {
       constructor(attrs) {
