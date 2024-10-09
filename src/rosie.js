@@ -328,12 +328,51 @@ class Factory {
     return retval;
   }
 
+  /**
+   * Async Builds objects by getting values for all attributes and optionally passing
+   * the result to a constructor function.
+   *
+   * @param {object=} attributes
+   * @param {object=} options
+   * @return {Promise<*>}
+   */
+  async buildAsync(attributes, options) {
+    // Precalculate options.
+    // Because options cannot depend on themselves or on attributes, subsequent calls to
+    // `this.options` will be idempotent and we can avoid re-running builders
+    options = this.options(options);
+    const result = this.attributes(attributes, options);
+    let retval = null;
+
+    if (this.construct) {
+      const Constructor = this.construct;
+      retval = new Constructor(result);
+    } else {
+      retval = result;
+    }
+
+    for (let i = 0; i < this.callbacks.length; i++) {
+      const callbackResult = await this.callbacks[i](retval, options);
+      retval = callbackResult || retval;
+    }
+
+    return retval;
+  }
+
   buildList(size, attributes, options) {
     const objs = [];
     for (let i = 0; i < size; i++) {
       objs.push(this.build(attributes, options));
     }
     return objs;
+  }
+
+  async buildListAsync(size, attributes, options) {
+    const objs = [];
+    for (let i = 0; i < size; i++) {
+      objs.push(await this.buildAsync(attributes, options));
+    }
+    return await Promise.all(objs);
   }
 
   /**
@@ -402,6 +441,21 @@ Factory.build = function (name, attributes, options) {
 };
 
 /**
+ * Locates a factory by name and calls #buildAsync on it.
+ *
+ * @param {string} name
+ * @param {object=} attributes
+ * @param {object=} options
+ * @return {Promise<*>}
+ */
+Factory.buildAsync = async function (name, attributes, options) {
+  if (!this.factories[name]) {
+    throw new Error(`The "${name}" factory is not defined.`);
+  }
+  return await this.factories[name].buildAsync(attributes, options);
+};
+
+/**
  * Builds a collection of objects using the named factory.
  *
  * @param {string} name
@@ -416,6 +470,23 @@ Factory.buildList = function (name, size, attributes, options) {
     objs.push(Factory.build(name, attributes, options));
   }
   return objs;
+};
+
+/**
+ * Builds a collection of objects using the named factory.
+ *
+ * @param {string} name
+ * @param {number} size
+ * @param {object=} attributes
+ * @param {object=} options
+ * @return {Promise<Array.<*>>}
+ */
+Factory.buildListAsync = async function (name, size, attributes, options) {
+  const objs = [];
+  for (let i = 0; i < size; i++) {
+    objs.push(Factory.buildAsync(name, attributes, options));
+  }
+  return await Promise.all(objs);
 };
 
 /**
