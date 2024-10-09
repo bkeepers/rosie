@@ -386,11 +386,15 @@ describe('Factory', () => {
       });
 
       it('throws error if the factory is not defined', async () => {
+        let error;
         try {
           await Factory.buildAsync('nothing');
         } catch (e) {
-          expect(e).toEqual(new Error('The "nothing" factory is not defined.'));
+          error = e;
         }
+        expect(error).toEqual(
+          new Error('The "nothing" factory is not defined.')
+        );
       });
     });
   });
